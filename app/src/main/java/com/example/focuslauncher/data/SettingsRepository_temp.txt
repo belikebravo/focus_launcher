@@ -1,0 +1,19 @@
+    private val _excludedApps = MutableStateFlow<Set<String>>(
+        prefs.getStringSet("excluded_apps", setOf("com.android.settings", "com.google.android.dialer", "com.google.android.calculator")) ?: emptySet()
+    )
+    val excludedApps: Flow<Set<String>> = _excludedApps
+
+    fun toggleExcludedApp(packageName: String) {
+        val current = _excludedApps.value.toMutableSet()
+        if (current.contains(packageName)) {
+            current.remove(packageName)
+        } else {
+            current.add(packageName)
+        }
+        _excludedApps.value = current
+        prefs.edit().putStringSet("excluded_apps", current).apply()
+    }
+    
+    fun isAppExcluded(packageName: String): Boolean {
+        return _excludedApps.value.contains(packageName)
+    }

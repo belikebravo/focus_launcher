@@ -1,0 +1,4 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.FocusLauncher" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.FocusLauncher" parent="Base.Theme.FocusLauncher" />
+</resources>
