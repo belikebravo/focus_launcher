@@ -60,42 +60,51 @@ class AppRepository(val context: Context) {
         }
     }
 
+    private val launcherApps by lazy { context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps }
+    private val userManager by lazy { context.getSystemService(Context.USER_SERVICE) as android.os.UserManager }
+
     private suspend fun fetchInstalledApps(): List<AppModel> = withContext(Dispatchers.IO) {
-        val pm = context.packageManager
-        val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
+        val appList = mutableListOf<AppModel>()
+        val profiles = launcherApps.profiles
 
-        val resolvedInfos: List<ResolveInfo> = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            pm.queryIntentActivities(
-                mainIntent,
-                PackageManager.ResolveInfoFlags.of(0L)
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            pm.queryIntentActivities(mainIntent, 0)
-        }
-
-        // Fetch Usage Stats
+        // Fetch Usage Stats for ALL profiles? 
+        // UsageStatsManager in strict mode only returns for current user usually unless system app.
+        // But for a launcher, we mostly display.
+        // We will try to fetch stats for current user first.
         val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
         val endTime = System.currentTimeMillis()
         val startTime = endTime - (1000 * 60 * 60 * 24) // 24 hours
         val usageStatsMap = usageStatsManager.queryUsageStats(
             android.app.usage.UsageStatsManager.INTERVAL_DAILY, startTime, endTime
         ).associateBy { it.packageName }
-
-        resolvedInfos.map { resolveInfo ->
-            val packageName = resolveInfo.activityInfo.packageName
-            val stats = usageStatsMap[packageName]
-            
-            AppModel(
-                label = resolveInfo.loadLabel(pm).toString(),
-                packageName = packageName,
-                isFavorite = false,
-                isBlocked = false,
-                usageDuration = stats?.totalTimeInForeground ?: 0L,
-                lastUsedTimestamp = stats?.lastTimeUsed ?: 0L
-            )
+        
+        for (userHandle in profiles) {
+            val activities = launcherApps.getActivityList(null, userHandle)
+            for (activity in activities) {
+                val packageName = activity.applicationInfo.packageName
+                // Avoid duplicates (if any) or handle same package in different profile?
+                // For a launcher, usually we distinguish them (e.g. with a briefcase icon).
+                // For now, we just list them.
+                
+                val stats = usageStatsMap[packageName] // Note: usage stats might be limited to current user
+                val isWorkProfile = !android.os.Process.myUserHandle().equals(userHandle)
+                
+                appList.add(AppModel(
+                    label = activity.label.toString() + (if (isWorkProfile) " (Work)" else ""),
+                    packageName = packageName,
+                    isWork = isWorkProfile,
+                    isFavorite = false,
+                    isBlocked = false, // Will be updated by flow combine
+                    usageDuration = stats?.totalTimeInForeground ?: 0L,
+                    lastUsedTimestamp = stats?.lastTimeUsed ?: 0L
+                ))
+            }
         }
+        // Sync Work Apps to SharedPreferences for AppBlockingService
+        val workPackages = appList.filter { it.isWork }.map { it.packageName }.toSet()
+        val prefs = context.getSharedPreferences("focus_settings", Context.MODE_PRIVATE)
+        prefs.edit().putStringSet("cached_work_packages", workPackages).apply()
+        
+        appList
     }
 }

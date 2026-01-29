@@ -32,6 +32,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val focusWaitTimeMinutes = settingsRepository.focusWaitTimeMinutes
     fun setFocusWaitTimeMinutes(minutes: Int) = settingsRepository.setFocusWaitTimeMinutes(minutes)
     
+    val standardWaitTimeSeconds = settingsRepository.standardWaitTimeSeconds
+    fun setStandardWaitTimeSeconds(seconds: Int) = settingsRepository.setStandardWaitTimeSeconds(seconds)
+    
     // PDF/File Analysis Removed per user request
 
 

@@ -7,6 +7,7 @@ data class AppModel(
     val packageName: String,
     // val icon: android.graphics.drawable.Drawable?, // Removed
     val isSystemApp: Boolean = false,
+    val isWork: Boolean = false,
     var isFavorite: Boolean = false,
     var isBlocked: Boolean = false,
     var usageDuration: Long = 0L,

@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -43,12 +44,13 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit
 ) {
+
     val selectedTopics by viewModel.selectedTopics.collectAsState()
     val appList by viewModel.appListState.collectAsState()
 
@@ -104,13 +106,46 @@ fun SettingsScreen(
                     Text(
                         text = "Strict App Wait Time: $minutes min",
                         color = Color.White,
-                        fontSize = 16.sp
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Text(
+                        text = "For Social Media & Restricted Apps",
+                        color = Color.Gray,
+                        fontSize = 12.sp
                     )
                     Slider(
                         value = minutes.toFloat(),
                         onValueChange = { viewModel.setFocusWaitTimeMinutes(it.toInt()) },
-                        valueRange = 1f..30f, // 1 to 30 minutes
-                        steps = 28, // Steps (30 - 1 - 1)
+                        valueRange = 1f..60f, // 1 to 60 minutes
+                        steps = 58,
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = Color.DarkGray
+                        )
+                    )
+                }
+
+                // Standard Wait Time
+                val standardSeconds by viewModel.standardWaitTimeSeconds.collectAsState(initial = 10)
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Text(
+                        text = "Standard Friction: $standardSeconds sec",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Text(
+                        text = "For normal non-work apps",
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                    Slider(
+                        value = standardSeconds.toFloat(),
+                        onValueChange = { viewModel.setStandardWaitTimeSeconds(it.toInt()) },
+                        valueRange = 5f..120f, // 5s to 2 mins
+                        steps = 22,
                         colors = SliderDefaults.colors(
                             thumbColor = MaterialTheme.colorScheme.primary,
                             activeTrackColor = MaterialTheme.colorScheme.primary,
@@ -120,11 +155,155 @@ fun SettingsScreen(
                 }
             }
             
-
-            
-
-            
-            // Knowledge/Gemini sections moved to Home Screen (Knowledge Hub)
+            item {
+                Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 24.dp))
+                Text(
+                     text = "Knowledge Settings",
+                     color = MaterialTheme.colorScheme.primary,
+                     style = MaterialTheme.typography.titleMedium,
+                     modifier = Modifier.padding(vertical = 8.dp)
+                )
+                
+                // API Key
+                var apiKeyInput by remember { mutableStateOf("") }
+                val currentKey by viewModel.geminiApiKey.collectAsState(initial = "")
+                val verifyState by viewModel.verificationState.collectAsState()
+                
+                val context = androidx.compose.ui.platform.LocalContext.current
+                
+                // Link to get API Key (Styled as Chip)
+                androidx.compose.material3.SuggestionChip(
+                    onClick = {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://aistudio.google.com/app/apikey"))
+                        context.startActivity(intent)
+                    },
+                    label = { Text("Get Free API Key", color = Color(0xFF4285F4)) },
+                    border = androidx.compose.material3.AssistChipDefaults.assistChipBorder(borderColor = Color(0xFF4285F4))
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                OutlinedTextField(
+                    value = if (apiKeyInput.isEmpty() && currentKey.isNotEmpty()) currentKey else apiKeyInput,
+                    onValueChange = { apiKeyInput = it },
+                    label = { Text("Gemini API Key") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = Color.Gray
+                    )
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Button(
+                        onClick = { viewModel.verifyAndRefretch(apiKeyInput.ifEmpty { currentKey }) },
+                        enabled = verifyState != VerificationState.Loading
+                    ) {
+                        when(verifyState) {
+                            VerificationState.Loading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
+                            VerificationState.Success -> Icon(Icons.Default.Check, contentDescription = "Verified")
+                            else -> Text("Verify & Save")
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Active Topics (Dynamic - matches User Selection + Custom)
+                Text("Active Topics", color = Color.White, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                if (selectedTopics.isEmpty()) {
+                    Text("No topics selected.", color = Color.Gray, fontSize = 12.sp)
+                } else {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        selectedTopics.forEach { topic ->
+                            InputChip(
+                                selected = true,
+                                onClick = { viewModel.toggleTopic(topic) },
+                                label = { Text(topic.displayName) },
+                                trailingIcon = {
+                                    Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Suggested Topics (Hardcoded - Filter out selected)
+                val allPredefined = listOf(
+                    Topic("CS", "Computer Science"),
+                    Topic("HIST", "History"),
+                    Topic("SCI", "Science"),
+                    Topic("BIZ", "Business"),
+                    Topic("LANG", "Languages"),
+                    Topic("ART", "Arts"),
+                    Topic("PHIL", "Philosophy"),
+                    Topic("PSYCH", "Psychology")
+                )
+                val suggested = allPredefined.filter { pre -> selectedTopics.none { it.id == pre.id } }
+                
+                if (suggested.isNotEmpty()) {
+                    Text("Suggested Topics", color = Color.Gray, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        suggested.forEach { topic ->
+                            FilterChip(
+                                selected = false,
+                                onClick = { viewModel.toggleTopic(topic) },
+                                label = { Text(topic.displayName) },
+                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = "Add") }
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Add Custom Topic
+                var newTopicText by remember { mutableStateOf("") }
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newTopicText,
+                        onValueChange = { newTopicText = it },
+                        label = { Text("Add Custom Topic") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = Color.Gray
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { 
+                            viewModel.addTopic(newTopicText)
+                            newTopicText = ""
+                        },
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                        modifier = Modifier.width(48.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add")
+                    }
+                }
+            }
 
             item {
                 Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 24.dp))

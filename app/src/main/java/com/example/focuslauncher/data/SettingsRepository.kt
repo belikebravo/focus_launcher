@@ -71,4 +71,14 @@ class SettingsRepository(context: Context) {
         sharedPreferences.edit().putInt("focus_wait_time_minutes", safeMinutes).apply()
         _focusWaitTimeMinutes.value = safeMinutes
     }
+
+    // Standard Wait Time (Friction)
+    private val _standardWaitTimeSeconds = MutableStateFlow(sharedPreferences.getInt("standard_wait_time_seconds", 10))
+    val standardWaitTimeSeconds: Flow<Int> = _standardWaitTimeSeconds
+
+    fun setStandardWaitTimeSeconds(seconds: Int) {
+        val safeSeconds = seconds.coerceAtLeast(5) // min 5s
+        sharedPreferences.edit().putInt("standard_wait_time_seconds", safeSeconds).apply()
+        _standardWaitTimeSeconds.value = safeSeconds
+    }
 }

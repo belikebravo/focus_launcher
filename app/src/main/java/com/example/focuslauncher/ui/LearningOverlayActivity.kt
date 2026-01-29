@@ -85,6 +85,7 @@ class LearningOverlayActivity : ComponentActivity() {
                 // Existing cache is fast. No need to wait for network if we have data.
 
                 LearningOverlayScreen(
+                    targetPackage = targetPackage ?: "Unknown",
                     nugget = displayNugget,
                     totalSeconds = requiredTimeSeconds,
                     onContinue = {
@@ -108,6 +109,7 @@ class LearningOverlayActivity : ComponentActivity() {
 
 @Composable
 fun LearningOverlayScreen(
+    targetPackage: String,
     nugget: com.example.focuslauncher.data.knowledge.KnowledgeNugget,
     totalSeconds: Long,
     onContinue: () -> Unit,

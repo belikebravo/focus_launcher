@@ -23,12 +23,60 @@ fun launchApp(context: Context, app: AppModel) {
         return
     }
     
+    // 0. Exclusions (Camera, Work, etc)
+    // Hardcoded Camera/Teams List
+    val exemptPackages = listOf(
+        "com.nothing.camera", 
+        "com.android.camera", 
+        "com.google.android.GoogleCamera", 
+        "com.samsung.android.camera", 
+        "com.oneplus.camera",
+        "com.apple.camera",
+        "com.microsoft.teams"
+    )
+    
+    val isCamera = exemptPackages.contains(app.packageName) || app.packageName.contains("camera", ignoreCase = true)
+    val isYouTubeMusic = app.packageName == "com.google.android.apps.youtube.music"
+    
+    // 1. Explicit Allow List (Overrides everything, including Strict)
+    if (isCamera || isYouTubeMusic) {
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
+        if (launchIntent != null) {
+            context.startActivity(launchIntent)
+        }
+        return
+    }
+
+    // Strict Check (YouTube/Social)
+    val strictKeywords = listOf("instagram", "facebook", "snapchat", "youtube")
+    val isStrict = strictKeywords.any { app.packageName.contains(it, ignoreCase = true) } || app.packageName == "com.google.android.youtube"
+    
+    // 2. Strict Blocking
+    if (isStrict) {
+        // Fall through to blocking logic below.
+        // We do NOT check isWork here, because Personal YouTube > Work Profile Exemption per user request.
+    } else {
+        // 3. Work Profile Exemption (For non-strict apps)
+        if (app.isWork) {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
+            if (launchIntent != null) {
+                context.startActivity(launchIntent)
+            }
+            return
+        }
+    }
+
     val shoppingApps = setOf("com.amazon.mShop.android.shopping", "com.flipkart.android", "com.myntra.android")
     
     // Knowledge Nugget Logic - Universal Blocking
-    // Default 10s for everyone, 5 mins (300s) for Shopping
+    val prefs = context.getSharedPreferences("focus_settings", Context.MODE_PRIVATE)
+    val standardWaitTime = prefs.getInt("standard_wait_time_seconds", 10).toLong()
+    val strictWaitTimeMinutes = prefs.getInt("focus_wait_time_minutes", 5)
     
-    val requiredTime = if (shoppingApps.contains(app.packageName)) 300L else 10L
+    var requiredTime = standardWaitTime
+    if (shoppingApps.contains(app.packageName) || isStrict) {
+         requiredTime = strictWaitTimeMinutes * 60L
+    }
     
     val intent = Intent(context, LearningOverlayActivity::class.java).apply {
         putExtra("TARGET_PACKAGE", app.packageName)

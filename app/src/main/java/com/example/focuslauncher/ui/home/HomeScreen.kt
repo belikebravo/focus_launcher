@@ -155,12 +155,8 @@ fun HomeScreen(
             val savedApiKey by viewModel.geminiApiKey.collectAsState(initial = "")
             
             // UI State for this page
-            var showConfig by remember { androidx.compose.runtime.mutableStateOf(false) }
             var viewMode by remember { androidx.compose.runtime.mutableStateOf("card") } // "card" or "list"
-            var newTopicText by remember { androidx.compose.runtime.mutableStateOf("") }
-            
-            // Initialize input with saved key once loaded
-            var apiKeyInput by remember(savedApiKey) { androidx.compose.runtime.mutableStateOf(savedApiKey) } 
+            var newTopicText by remember { androidx.compose.runtime.mutableStateOf("") } 
 
             Column(
                 modifier = Modifier
@@ -181,8 +177,11 @@ fun HomeScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Row {
-                        // Config Toggle
-                        androidx.compose.material3.IconButton(onClick = { showConfig = !showConfig }) {
+                        // Config Button -> Launches Unified Settings
+                        androidx.compose.material3.IconButton(onClick = { 
+                            val intent = Intent(context, com.example.focuslauncher.ui.settings.SettingsActivity::class.java)
+                            context.startActivity(intent)
+                        }) {
                             Icon(Icons.Default.Settings, contentDescription = "Configure", tint = Color.Gray)
                         }
                         // Refresh Button
@@ -200,119 +199,7 @@ fun HomeScreen(
                     }
                 }
                 
-                // CONFIG SECTION (Expandable)
-                if (showConfig) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp)
-                            .background(Color(0xFF222222), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                            .padding(12.dp)
-                    ) {
-                        Text("Manage Sources", style = MaterialTheme.typography.labelLarge, color = Color.White)
-                        
-                        // Link to get API Key (Styled as Chip)
-                        androidx.compose.material3.SuggestionChip(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
-                                context.startActivity(intent)
-                            },
-                            label = { Text("Get Free API Key", color = Color(0xFF4285F4)) },
-                            border = androidx.compose.material3.AssistChipDefaults.assistChipBorder(borderColor = Color(0xFF4285F4))
-                        )
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        // API Key Input
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            BasicTextField(
-                                value = apiKeyInput,
-                                onValueChange = { apiKeyInput = it },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .background(Color.Black, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                    .padding(8.dp),
-                                textStyle = TextStyle(color = Color.White),
-                                singleLine = true,
-                                decorationBox = { innerTextField ->
-                                    if (apiKeyInput.isEmpty()) Text("Enter Gemini API Key", color = Color.Gray)
-                                    innerTextField()
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            androidx.compose.material3.Button(
-                                onClick = { viewModel.verifyApiKey(apiKeyInput) },
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
-                            ) {
-                                Text("Verify")
-                            }
-                        }
-                        if (refreshState == "Verified") Text("API Key Active", color = Color.Green, fontSize = 12.sp)
-                        if (refreshState == "Invalid Key") Text("Invalid Key", color = Color.Red, fontSize = 12.sp)
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        // Add Topic Input
-                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            BasicTextField(
-                                value = newTopicText,
-                                onValueChange = { newTopicText = it },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .background(Color.Black, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                    .padding(8.dp),
-                                textStyle = TextStyle(color = Color.White),
-                                singleLine = true,
-                                decorationBox = { innerTextField ->
-                                    if (newTopicText.isEmpty()) Text("Add Topic (e.g. History)", color = Color.Gray)
-                                    innerTextField()
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            androidx.compose.material3.Button(
-                                onClick = { 
-                                    viewModel.addTopic(newTopicText)
-                                    newTopicText = ""
-                                },
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
-                            ) {
-                                Text("+")
-                            }
-                        }
-                        
-                        // Active Topics Chips
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Active Topics (Tap X to remove):", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        androidx.compose.foundation.layout.FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            selectedTopics.forEach { topic ->
-                                androidx.compose.material3.AssistChip(
-                                    onClick = {},
-                                    label = { Text(topic.displayName) },
-                                    trailingIcon = {
-                                        Icon(
-                                            androidx.compose.material.icons.Icons.Default.Close,
-                                            contentDescription = "Remove",
-                                            modifier = Modifier.size(16.dp).clickable { viewModel.removeTopic(topic) }
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        // Clear Library Button
-                        androidx.compose.material3.TextButton(
-                            onClick = { viewModel.clearLibrary() },
-                            modifier = Modifier.align(Alignment.End)
-                        ) {
-                            Text("Clear Library", color = Color.Red)
-                        }
-                    }
-                }
+                // CONFIG SECTION MOVED TO SETTINGS ACTIVITY
                 
                 // VIEW TOGGLE
                 Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
@@ -598,7 +485,7 @@ fun HomeScreen(
                                 modifier = Modifier.padding(vertical = 8.dp)
                             )
                         }
-                        items(uiState.favorites, key = { "fav_${it.packageName}" }) { app ->
+                        items(uiState.favorites, key = { "fav_${it.packageName}_${it.isWork}" }) { app ->
                             AppItem(app = app, onClick = { launchApp(context, app) }, onLongClick = { selectedApp = app })
                         }
                     }
@@ -613,7 +500,7 @@ fun HomeScreen(
                                 modifier = Modifier.padding(vertical = 8.dp)
                             )
                         }
-                         items(uiState.highUsageApps, key = { "high_${it.packageName}" }) { app ->
+                         items(uiState.highUsageApps, key = { "high_${it.packageName}_${it.isWork}" }) { app ->
                             AppItem(app = app, onClick = { launchApp(context, app) }, onLongClick = { selectedApp = app })
                         }
                     }
@@ -628,14 +515,14 @@ fun HomeScreen(
                                 modifier = Modifier.padding(vertical = 8.dp)
                             )
                         }
-                         items(uiState.dustyApps, key = { "dust_${it.packageName}" }) { app ->
+                         items(uiState.dustyApps, key = { "dust_${it.packageName}_${it.isWork}" }) { app ->
                             AppItem(app = app, onClick = { launchApp(context, app) }, onLongClick = { selectedApp = app })
                         }
                     }
                 }
 
                 // All Apps / Filtered Results
-                items(uiState.filteredApps, key = { it.packageName }) { app ->
+                items(uiState.filteredApps, key = { "${it.packageName}_${it.isWork}" }) { app ->
                     AppItem(
                         app = app, 
                         onClick = {
