@@ -200,7 +200,7 @@ class HomeViewModel(
 
     private fun filterApps(apps: List<AppModel>, query: String): List<AppModel> {
         return if (query.isBlank()) {
-            apps
+            apps.filter { !it.isFavorite }
         } else {
             apps.filter { 
                 it.label.contains(query, ignoreCase = true) 
