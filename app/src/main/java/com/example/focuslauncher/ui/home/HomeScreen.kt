@@ -37,6 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import com.example.focuslauncher.ui.common.QuizCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -154,6 +155,9 @@ fun HomeScreen(
             val selectedTopics by viewModel.selectedTopics.collectAsState()
             val savedApiKey by viewModel.geminiApiKey.collectAsState(initial = "")
             
+            val isQuizMode by viewModel.isQuizModeEnabled.collectAsState(initial = false)
+            val currentQuiz by viewModel.currentQuiz.collectAsState()
+            
             // UI State for this page
             var viewMode by remember { androidx.compose.runtime.mutableStateOf("card") } // "card" or "list"
             var newTopicText by remember { androidx.compose.runtime.mutableStateOf("") } 
@@ -237,7 +241,23 @@ fun HomeScreen(
                                 verticalArrangement = Arrangement.Center,
                                 modifier = Modifier.verticalScroll(rememberScrollState())
                             ) {
-                                if (nugget != null) {
+                                if (isQuizMode) {
+                                    if (currentQuiz != null) {
+                                        QuizCard(
+                                            quiz = currentQuiz!!,
+                                            uiState = uiState.quizState,
+                                            onOptionSelected = { idx -> viewModel.submitAnswer(idx, currentQuiz!!.correctAnswerIndex) },
+                                            onNext = { viewModel.nextQuiz() }
+                                        )
+                                    } else {
+                                        // Quiz Mode on, but no quizzes yet?
+                                        if (refreshState == "Loading") {
+                                             Text("Fetching Quizzes...", color = Color.Gray)
+                                        } else {
+                                             Text("No quizzes found.\nCheck API Key or Connection.", textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = Color.Gray)
+                                        }
+                                    }
+                                } else if (nugget != null) {
                                     Text(
                                         text = nugget!!.topic.displayName,
                                         style = MaterialTheme.typography.labelMedium,
@@ -273,9 +293,20 @@ fun HomeScreen(
                                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
                             ) {
                                 Row {
-                                    androidx.compose.material3.TextButton(onClick = { viewModel.previousNugget() }) { Text("< Prev", color = Color.Gray) }
-                                    Spacer(modifier = Modifier.width(32.dp))
-                                    androidx.compose.material3.TextButton(onClick = { viewModel.nextNugget() }) { Text("Next >", color = Color.White) }
+                                    if (isQuizMode) {
+                                         // In Quiz Mode, "Next" logic is inside the QuizCard usually, 
+                                         // but we can put a "Skip" button here if unanswered?
+                                         // Or hide these controls.
+                                         if (uiState.quizState.isAnswered) {
+                                             androidx.compose.material3.TextButton(onClick = { viewModel.nextQuiz() }) { Text("Next Question >", color = Color.White) }
+                                         } else {
+                                             androidx.compose.material3.TextButton(onClick = { viewModel.nextQuiz() }) { Text("Skip >", color = Color.Gray) }
+                                         }
+                                    } else {
+                                        androidx.compose.material3.TextButton(onClick = { viewModel.previousNugget() }) { Text("< Prev", color = Color.Gray) }
+                                        Spacer(modifier = Modifier.width(32.dp))
+                                        androidx.compose.material3.TextButton(onClick = { viewModel.nextNugget() }) { Text("Next >", color = Color.White) }
+                                    }
                                 }
                             }
                         }
@@ -609,3 +640,5 @@ fun AppItem(
         }
     }
 }
+
+// QuizCard moved to com.example.focuslauncher.ui.common

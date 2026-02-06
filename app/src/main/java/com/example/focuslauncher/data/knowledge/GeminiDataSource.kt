@@ -114,4 +114,115 @@ object GeminiDataSource {
         }
         return@withContext nuggets
     }
+
+    suspend fun fetchQuizQuestionsForTopics(topics: List<Topic>, apiKey: String): List<QuizQuestion> = withContext(Dispatchers.IO) {
+        val questions = mutableListOf<QuizQuestion>()
+        try {
+            val url = URL(String.format(API_URL_TEMPLATE, apiKey))
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.doOutput = true
+
+            // Prompt engineering for QUIZ
+            val topicListString = topics.joinToString(", ") { it.displayName }
+            val prompt = "Generate 10 multiple-choice questions for EACH of the following topics: [$topicListString]. " +
+                    "For example, if there are 2 topics, generate 20 items total. " +
+                    "Format the response strictly as a JSON Object with a single key 'questions', which is an array of objects. " +
+                    "Each object must have: " +
+                    "'topic' (The Topic Name), " +
+                    "'question' (The Question Text), " +
+                    "'options' (Array of 4 strings), " +
+                    "'correct_index' (Integer 0-3), " +
+                    "'explanation' (String explanation of why the answer is correct). " +
+                    "Do not use Markdown formatting in the JSON."
+
+            val jsonBody = JSONObject()
+            val contentsArray = org.json.JSONArray()
+            val contentObj = JSONObject()
+            val partsArray = org.json.JSONArray()
+            val partObj = JSONObject()
+            
+            partObj.put("text", prompt)
+            partsArray.put(partObj)
+            contentObj.put("parts", partsArray)
+            contentsArray.put(contentObj)
+            jsonBody.put("contents", contentsArray)
+
+            val writer = OutputStreamWriter(connection.outputStream)
+            writer.write(jsonBody.toString())
+            writer.flush()
+            writer.close()
+
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                val response = StringBuilder()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    response.append(line)
+                }
+                reader.close()
+
+                // Parse Response
+                val respJson = JSONObject(response.toString())
+                val candidates = respJson.optJSONArray("candidates")
+                if (candidates != null && candidates.length() > 0) {
+                    val firstCandidate = candidates.getJSONObject(0)
+                    val contentParts = firstCandidate.optJSONObject("content")?.optJSONArray("parts")
+                    if (contentParts != null && contentParts.length() > 0) {
+                        val rawText = contentParts.getJSONObject(0).optString("text")
+                        
+                        try {
+                            val cleanJson = rawText.replace("```json", "").replace("```", "").trim()
+                            val rootObj = JSONObject(cleanJson)
+                            val questionsArray = rootObj.optJSONArray("questions")
+                            
+                            if (questionsArray != null) {
+                                for (i in 0 until questionsArray.length()) {
+                                    val qObj = questionsArray.getJSONObject(i)
+                                    val questionText = qObj.optString("question", "Question")
+                                    val explanation = qObj.optString("explanation", "")
+                                    val correctIndex = qObj.optInt("correct_index", 0)
+                                    val topicName = qObj.optString("topic", topics.firstOrNull()?.displayName ?: "General")
+                                    
+                                    val optionsJson = qObj.optJSONArray("options")
+                                    val optionsList = mutableListOf<String>()
+                                    if (optionsJson != null) {
+                                        for (j in 0 until optionsJson.length()) {
+                                            optionsList.add(optionsJson.getString(j))
+                                        }
+                                    }
+                                    
+                                    // Ensure we have 4 options
+                                    if (optionsList.size >= 2) { // At least 2 options to be a quiz
+                                        val sourceTopic = topics.find { it.displayName.equals(topicName, ignoreCase = true) } 
+                                            ?: Topic(topicName.uppercase().replace(" ", "_"), topicName)
+                                        
+                                        questions.add(QuizQuestion(
+                                            id = "quiz_${System.currentTimeMillis()}_$i",
+                                            topic = sourceTopic,
+                                            difficulty = Difficulty.INTERMEDIATE,
+                                            question = questionText,
+                                            options = optionsList,
+                                            correctAnswerIndex = correctIndex,
+                                            explanation = explanation
+                                        ))
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("FocusGemini", "Quiz JSON Parse Error: ${e.message}")
+                        }
+                    }
+                }
+            } else {
+                 android.util.Log.e("FocusGemini", "Gemini Error: $responseCode")
+            }
+            connection.disconnect()
+        } catch (e: Exception) {
+            throw e
+        }
+        return@withContext questions
+    }
 }

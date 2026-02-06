@@ -52,6 +52,20 @@ class KnowledgeRepository private constructor(private val context: Context) {
         initialValue = null
     )
 
+    // Quiz Cache
+    private val _fetchedQuizzes = MutableStateFlow<List<QuizQuestion>>(emptyList())
+    val allQuizzes: StateFlow<List<QuizQuestion>> = _fetchedQuizzes.asStateFlow()
+
+    // Quiz Index
+    private val _currentQuizIndex = MutableStateFlow(0)
+    val currentQuiz: StateFlow<QuizQuestion?> = combine(_fetchedQuizzes, _currentQuizIndex) { list, index ->
+        if (list.isNotEmpty() && index in list.indices) list[index] else null
+    }.stateIn(
+        scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
+        started = kotlinx.coroutines.flow.SharingStarted.Eagerly,
+        initialValue = null
+    )
+
     private val gson = com.google.gson.Gson()
 
     init {
@@ -62,6 +76,7 @@ class KnowledgeRepository private constructor(private val context: Context) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             // Load cached nuggets on startup
             loadNuggetsFromPrefs()
+            loadQuizzesFromPrefs()
             
             // Auto-Refresh Logic (24 hours)
             val lastRefresh = prefs.getLong("last_refresh_time", 0L)
@@ -96,17 +111,38 @@ class KnowledgeRepository private constructor(private val context: Context) {
             var isGeminiSuccess = false
             
             if (!apiKey.isNullOrEmpty()) {
-                 android.util.Log.d("FocusKnowledge", "Using Gemini API Key for batch fetch")
-                 // Single Batch Call for ALL topics
-                 val nuggets = GeminiDataSource.fetchNuggetsForTopics(topics, apiKey)
-                 if (nuggets.isNotEmpty()) {
-                     newNuggets.addAll(nuggets)
-                     isGeminiSuccess = true
-                 }
-            } else {
-                 android.util.Log.d("FocusKnowledge", "Using Wikipedia (No API Key)")
-                 newNuggets.addAll(NetworkDataSource.fetchNuggetsForTopics(topics))
-            }
+                     // Check if Quiz Mode is enabled
+                     val isQuizMode = settingsPrefs.getBoolean("quiz_mode_enabled", false)
+                     
+                     if (isQuizMode) {
+                         android.util.Log.d("FocusKnowledge", "Quiz Mode Enabled: Fetching Quizzes...")
+                         val questions = GeminiDataSource.fetchQuizQuestionsForTopics(topics, apiKey)
+                         if (questions.isNotEmpty()) {
+                             val currentQs = _fetchedQuizzes.value
+                             val newQs = questions.shuffled()
+                             _fetchedQuizzes.emit(newQs) // Replace for simplicity or append? Let's replace for fresh quizzes.
+                             saveQuizzesToPrefs(newQs)
+                             android.util.Log.d("FocusKnowledge", "Fetched ${newQs.size} quizzes.")
+                         } else {
+                             android.util.Log.e("FocusKnowledge", "Gemini Quiz Fetch yielded 0 results.")
+                         }
+                         // Should we ALSO fetch nuggets? Maybe not.
+                         return
+                     }
+                     
+                     android.util.Log.d("FocusKnowledge", "Using Gemini API Key for batch fetch")
+                     // Single Batch Call for ALL topics
+                     val nuggets = GeminiDataSource.fetchNuggetsForTopics(topics, apiKey)
+                     if (nuggets.isNotEmpty()) {
+                         newNuggets.addAll(nuggets)
+                         isGeminiSuccess = true
+                     }
+                } else if (!apiKey.isNullOrEmpty() && newNuggets.isEmpty()) { 
+                    // Fallback handled below
+                } else {
+                     android.util.Log.d("FocusKnowledge", "Using Wikipedia (No API Key)")
+                     newNuggets.addAll(NetworkDataSource.fetchNuggetsForTopics(topics))
+                }
 
             android.util.Log.d("FocusKnowledge", "Repository received ${newNuggets.size} new nuggets")
             System.out.println("FocusKnowledge: Repository received ${newNuggets.size} nuggets")
@@ -169,6 +205,20 @@ class KnowledgeRepository private constructor(private val context: Context) {
              val size = _fetchedNuggets.value.size
             _currentIndex.value = (_currentIndex.value - 1 + size) % size
         }
+    }
+
+    fun nextQuiz() {
+        if (_fetchedQuizzes.value.isNotEmpty()) {
+            _currentQuizIndex.value = (_currentQuizIndex.value + 1) % _fetchedQuizzes.value.size
+        }
+    }
+
+    fun getRandomQuiz(): QuizQuestion? {
+        val list = _fetchedQuizzes.value
+        if (list.isNotEmpty()) {
+            return list.random()
+        }
+        return null
     }
 
     fun getRandomNugget(): KnowledgeNugget {
@@ -289,6 +339,28 @@ class KnowledgeRepository private constructor(private val context: Context) {
                     // Shuffle loaded cache too!
                     _fetchedNuggets.tryEmit(cached.shuffled())
                     System.out.println("FocusKnowledge: Loaded ${cached.size} nuggets from cache (shuffled)")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun saveQuizzesToPrefs(quizzes: List<QuizQuestion>) {
+        if (quizzes.isEmpty()) return
+        val json = gson.toJson(quizzes)
+        prefs.edit().putString("cached_quizzes", json).apply()
+    }
+
+    private fun loadQuizzesFromPrefs() {
+        val json = prefs.getString("cached_quizzes", null)
+        if (json != null) {
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<List<QuizQuestion>>() {}.type
+                val cached: List<QuizQuestion> = gson.fromJson(json, type)
+                if (cached.isNotEmpty()) {
+                    _fetchedQuizzes.tryEmit(cached.shuffled())
+                    android.util.Log.d("FocusKnowledge", "Loaded ${cached.size} quizzes from cache")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

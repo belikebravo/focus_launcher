@@ -18,3 +18,13 @@ data class KnowledgeNugget(
     val shortText: String, // One-liner
     val detailedText: String // Paragraph
 )
+
+data class QuizQuestion(
+    val id: String,
+    val topic: Topic,
+    val difficulty: Difficulty,
+    val question: String,
+    val options: List<String>,
+    val correctAnswerIndex: Int,
+    val explanation: String
+)

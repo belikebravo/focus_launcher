@@ -28,6 +28,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleFocusMode(enabled: Boolean) = settingsRepository.toggleFocusMode(enabled)
     
+    // Quiz Mode
+    val isQuizModeEnabled = settingsRepository.isQuizModeEnabled
+    fun toggleQuizMode(enabled: Boolean) {
+        settingsRepository.toggleQuizMode(enabled)
+        refreshNuggets() // Auto-fetch appropriate content
+    }
+    
     // Wait Time Configuration
     val focusWaitTimeMinutes = settingsRepository.focusWaitTimeMinutes
     fun setFocusWaitTimeMinutes(minutes: Int) = settingsRepository.setFocusWaitTimeMinutes(minutes)
@@ -63,6 +70,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 android.util.Log.e("FocusSettings", "Failed to refresh: ${e.message}")
             }
         }
+    }
+
+    fun clearLibrary() {
+        knowledgeRepository.clearAll()
+        android.widget.Toast.makeText(context, "Knowledge Base Cleared", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     // Excluded Apps

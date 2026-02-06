@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import com.example.focuslauncher.data.knowledge.*
 import com.example.focuslauncher.data.knowledge.KnowledgeRepository
 import com.example.focuslauncher.ui.theme.FocusLauncherTheme
+import com.example.focuslauncher.ui.common.QuizCard
+import com.example.focuslauncher.ui.common.QuizState
 
 class LearningOverlayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,42 +53,42 @@ class LearningOverlayActivity : ComponentActivity() {
             return
         }
 
+        val prefs = getSharedPreferences("focus_settings", android.content.Context.MODE_PRIVATE)
+        val isQuizMode = prefs.getBoolean("quiz_mode_enabled", false)
         val repository = KnowledgeRepository.getInstance(this)
 
         setContent {
             FocusLauncherTheme {
-                // Multi-stage loading strategy for Speed + Variety:
-                // 1. Try to get a random cached nugget IMMEDIATELY (Synchronous)
-                var displayNugget by remember { mutableStateOf(repository.getRandomNugget()) }
+                // Multi-stage loading strategy
+                var displayNugget by remember { mutableStateOf<KnowledgeNugget?>(null) }
+                var displayQuiz by remember { mutableStateOf<QuizQuestion?>(null) }
                 
-                // 2. If the random fetch gave us a fallback ("loading"), it means cache is empty.
-                // In that case, we MUST observe the network flow and trigger a refresh.
-                if (displayNugget.id == "fallback" || displayNugget.id == "loading") {
-                    val networkNugget by repository.currentNugget.collectAsState(initial = null)
-                    
-                    LaunchedEffect(networkNugget) {
-                        if (networkNugget != null) {
-                            displayNugget = networkNugget!!
+                // Initialize Data
+                LaunchedEffect(Unit) {
+                    if (isQuizMode) {
+                        var q = repository.getRandomQuiz()
+                        if (q == null) {
+                            try { repository.refreshNuggets() } catch(e: Exception) {}
+                            q = repository.getRandomQuiz()
                         }
-                    }
-                    
-                    LaunchedEffect(Unit) {
-                        try {
-                            repository.refreshNuggets()
-                        } catch (e: Exception) {
-                            // Run silently or log error
-                            e.printStackTrace()
-                        }
+                        displayQuiz = q
+                    } else {
+                         var n = repository.getRandomNugget()
+                         if (n.id == "fallback" || n.id == "loading") {
+                             try { repository.refreshNuggets() } catch(e: Exception) {}
+                             val flowNugget = repository.currentNugget.value // Try instant access or listen flow? 
+                             // Simplify: just re-get random
+                             n = repository.getRandomNugget()
+                         }
+                         displayNugget = n
                     }
                 }
-                
-                // 3. Optional: Trigger a background refresh even if we have cache, to keep content fresh?
-                // For now, let's stick to the user's request for "speed" and "shuffle".
-                // Existing cache is fast. No need to wait for network if we have data.
 
                 LearningOverlayScreen(
                     targetPackage = targetPackage ?: "Unknown",
                     nugget = displayNugget,
+                    quiz = displayQuiz,
+                    isQuizMode = isQuizMode,
                     totalSeconds = requiredTimeSeconds,
                     onContinue = {
                         val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
@@ -96,11 +98,13 @@ class LearningOverlayActivity : ComponentActivity() {
                         finish()
                     },
                     onNext = {
-                        displayNugget = repository.getRandomNugget()
+                        if (isQuizMode) {
+                            displayQuiz = repository.getRandomQuiz()
+                        } else {
+                            displayNugget = repository.getRandomNugget()
+                        }
                     },
-                    onCancel = {
-                        finish()
-                    }
+                    onCancel = { finish() }
                 )
             }
         }
@@ -110,7 +114,9 @@ class LearningOverlayActivity : ComponentActivity() {
 @Composable
 fun LearningOverlayScreen(
     targetPackage: String,
-    nugget: com.example.focuslauncher.data.knowledge.KnowledgeNugget,
+    nugget: KnowledgeNugget?,
+    quiz: QuizQuestion?,
+    isQuizMode: Boolean,
     totalSeconds: Long,
     onContinue: () -> Unit,
     onNext: () -> Unit,
@@ -118,6 +124,9 @@ fun LearningOverlayScreen(
 ) {
     var secondsLeft by remember { mutableStateOf(totalSeconds) }
     var canProceed by remember { mutableStateOf(false) }
+    
+    // Quiz State
+    var quizState by remember(quiz) { mutableStateOf(QuizState()) }
 
     LaunchedEffect(Unit) {
         val timer = object : CountDownTimer(totalSeconds * 1000, 1000) {
@@ -127,7 +136,19 @@ fun LearningOverlayScreen(
 
             override fun onFinish() {
                 secondsLeft = 0
-                canProceed = true
+                if (!isQuizMode) {
+                    canProceed = true // Only auto-unlock for Nuggets? 
+                    // Or maintain timer for Quiz too, but prioritize correctness?
+                    // User said "instead of old knowledge mode". 
+                    // Let's say: Timer is a fallback, but Correct Answer is instant.
+                    canProceed = true
+                } else {
+                     // In Quiz Mode, maybe timer finishes but we still require answer?
+                     // Or just allow skip after timer?
+                     // "Wait display": usually implies wait time.
+                     // Let's allow proceed after timer OR correct answer.
+                     canProceed = true 
+                }
             }
         }
         timer.start()
@@ -144,7 +165,7 @@ fun LearningOverlayScreen(
                 .fillMaxSize()
                 .padding(32.dp)
         ) {
-            // SCROLLABLE CONTENT (Takes all available space above button)
+            // SCROLLABLE CONTENT
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -152,40 +173,63 @@ fun LearningOverlayScreen(
             ) {
                 Spacer(modifier = Modifier.height(32.dp))
                 
-                Text(
-                    text = "Knowledge Nugget",
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelLarge
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Text(
-                    text = nugget.topic.displayName,
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Text(
-                    text = nugget.shortText,
-                    color = Color.White,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.headlineMedium
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Text(
-                    text = nugget.detailedText,
-                    color = Color.LightGray,
-                    fontSize = 18.sp,
-                    lineHeight = 28.sp,
-                    textAlign = TextAlign.Start,
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                if (isQuizMode) {
+                     if (quiz != null) {
+                         QuizCard(
+                             quiz = quiz,
+                             uiState = quizState,
+                             onOptionSelected = { idx -> 
+                                 if (!quizState.isAnswered) {
+                                     val isCorrect = idx == quiz.correctAnswerIndex
+                                     quizState = QuizState(idx, true, isCorrect)
+                                     if (isCorrect) {
+                                         canProceed = true
+                                     }
+                                 }
+                             },
+                             onNext = onNext
+                         )
+                     } else {
+                         Text("Loading Quiz...", color = Color.Gray, modifier = Modifier.align(Alignment.CenterHorizontally))
+                     }
+                } else if (nugget != null) {
+                    Text(
+                        text = "Knowledge Nugget",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Text(
+                        text = nugget.topic.displayName,
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Text(
+                        text = nugget.shortText,
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Text(
+                        text = nugget.detailedText,
+                        color = Color.LightGray,
+                        fontSize = 18.sp,
+                        lineHeight = 28.sp,
+                        textAlign = TextAlign.Start,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                } else {
+                     Text("Loading Wisdom...", color = Color.Gray, modifier = Modifier.align(Alignment.CenterHorizontally))
+                }
                 
                 Spacer(modifier = Modifier.height(32.dp))
             }

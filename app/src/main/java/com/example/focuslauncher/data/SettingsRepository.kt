@@ -81,4 +81,13 @@ class SettingsRepository(context: Context) {
         sharedPreferences.edit().putInt("standard_wait_time_seconds", safeSeconds).apply()
         _standardWaitTimeSeconds.value = safeSeconds
     }
+
+    // Quiz Mode
+    private val _isQuizModeEnabled = MutableStateFlow(sharedPreferences.getBoolean("quiz_mode_enabled", false))
+    val isQuizModeEnabled: Flow<Boolean> = _isQuizModeEnabled
+
+    fun toggleQuizMode(enabled: Boolean) {
+        sharedPreferences.edit().putBoolean("quiz_mode_enabled", enabled).apply()
+        _isQuizModeEnabled.value = enabled
+    }
 }

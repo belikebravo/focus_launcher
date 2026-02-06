@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
+import com.example.focuslauncher.ui.common.QuizState
+
 data class HomeUiState(
     val searchQuery: String = "",
     val allApps: List<AppModel> = emptyList(),
@@ -22,8 +24,11 @@ data class HomeUiState(
     val highUsageApps: List<AppModel> = emptyList(),
     val dustyApps: List<AppModel> = emptyList(),
     // weatherInfo removed
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val quizState: QuizState = QuizState()
 )
+
+// data class QuizUiState removed in favor of common.QuizState
 
 class HomeViewModel(
     private val appRepository: AppRepository,
@@ -43,6 +48,9 @@ class HomeViewModel(
     val isFocusModeEnabled = settingsRepository.isFocusModeEnabled
     
     val currentNugget: StateFlow<com.example.focuslauncher.data.knowledge.KnowledgeNugget?> = knowledgeRepository.currentNugget
+    val currentQuiz: StateFlow<com.example.focuslauncher.data.knowledge.QuizQuestion?> = knowledgeRepository.currentQuiz
+    val isQuizModeEnabled = settingsRepository.isQuizModeEnabled
+    
     val selectedTopics = knowledgeRepository.selectedTopics
     val geminiApiKey = settingsRepository.geminiApiKey
 
@@ -114,6 +122,20 @@ class HomeViewModel(
     
     fun nextNugget() = knowledgeRepository.nextNugget()
     fun previousNugget() = knowledgeRepository.previousNugget()
+    
+    fun nextQuiz() {
+        _uiState.update { it.copy(quizState = QuizState()) } // Reset UI state
+        knowledgeRepository.nextQuiz()
+    }
+    
+    fun submitAnswer(index: Int, correctIndex: Int) {
+        if (_uiState.value.quizState.isAnswered) return
+        
+        val isCorrect = index == correctIndex
+        _uiState.update { 
+            it.copy(quizState = QuizState(selectedOptionIndex = index, isAnswered = true, isCorrect = isCorrect)) 
+        }
+    }
     
     private fun loadApps() {
         _uiState.update { it.copy(isLoading = true) }

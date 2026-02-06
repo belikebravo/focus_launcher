@@ -164,6 +164,32 @@ fun SettingsScreen(
                      modifier = Modifier.padding(vertical = 8.dp)
                 )
                 
+                // Clear Library Button
+                Button(
+                    onClick = { viewModel.clearLibrary() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Clear Knowledge Base")
+                }
+                
+                // Quiz Mode Toggle
+                val isQuizMode by viewModel.isQuizModeEnabled.collectAsState(initial = false)
+                Row(
+                   modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                   verticalAlignment = Alignment.CenterVertically
+               ) {
+                   Column(modifier = Modifier.weight(1f)) {
+                       Text(text = "Quiz Mode", color = Color.White, fontSize = 16.sp)
+                       Text(text = "Practice with MCQs instead of reading Nuggets", color = Color.Gray, fontSize = 12.sp)
+                   }
+                   Switch(checked = isQuizMode, onCheckedChange = { viewModel.toggleQuizMode(it) })
+               }
+               
+               Spacer(modifier = Modifier.height(8.dp))
+                
                 // API Key
                 var apiKeyInput by remember { mutableStateOf("") }
                 val currentKey by viewModel.geminiApiKey.collectAsState(initial = "")
